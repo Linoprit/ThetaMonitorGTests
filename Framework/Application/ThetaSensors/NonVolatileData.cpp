@@ -13,10 +13,49 @@
 #include <string>
 
 namespace NonVolDat {
+uint16_t NonVolatileData::_currAddress = 0;
 
-NonVolatileData::NonVolatileData() :
-		_currAddress { 0 }, _oldAddress { 0 } {
+NonVolatileData::NonVolatileData() {
 	static_assert(sizeof(Theta_sens_typeE2) == 16U);
+}
+
+ErrorCode NonVolatileData::setStationId(uint32_t stationId) {
+	uint32_t stationIdE2;
+	AT24Cxxx::read(STATION_ID_ADDRESS, reinterpret_cast<uint8_t*>(&stationIdE2),
+			sizeof(uint32_t));
+
+	if (stationId != stationIdE2) {
+		AT24Cxxx::write(STATION_ID_ADDRESS,
+				reinterpret_cast<uint8_t*>(&stationId), sizeof(uint32_t));
+		return ERR_OK;
+	}
+	return ERR_OK_E2_NOT_WRITTEN;
+}
+uint32_t NonVolatileData::getStationId(void) {
+	uint32_t stationId;
+	AT24Cxxx::read(STATION_ID_ADDRESS, reinterpret_cast<uint8_t*>(&stationId),
+			sizeof(uint32_t));
+	return stationId;
+}
+
+ErrorCode NonVolatileData::eraseIdTable(void) {
+	Theta_sens_typeE2 idE2Data;
+	idE2Data.sensorIdHash = 0xFFFFFFFF;
+	idE2Data.minVal = 0xFF;
+	idE2Data.maxVal = 0xFF;
+	idE2Data.sensType = 0xF;
+	idE2Data.relayNr = 0xF;
+	for(uint8_t i=0; i < ID_Table::SHORTNAME_LEN; i++){
+		idE2Data.shortname[i] = 0xFF;
+	}
+	idE2Data.checkSum = 0xFF;
+
+	_currAddress = ID_TABLE_START;
+	do {
+		AT24Cxxx::write(_currAddress, reinterpret_cast<uint8_t*>(&idE2Data),
+				sizeof(Theta_sens_typeE2));
+	} while (incCurrAddress() == false);
+	return ERR_OK;
 }
 
 void NonVolatileData::printIdTableRaw(void) {
@@ -89,10 +128,14 @@ void NonVolatileData::findSensIdHashOrEmpty(uint32_t sensorIdHash) {
 	Theta_sens_typeE2 idE2Data;
 	_currAddress = ID_TABLE_START;
 	idE2Data = iter();
+
 	while (!dataIsEmpty(idE2Data)) {
 		if (sensorIdHash == idE2Data.sensorIdHash) {
 			// here, iter points to the next data entry
-			_currAddress -= sizeof(Theta_sens_typeE2);
+			decCurrAddress();
+			return;
+		}
+		if (_currAddress >= ID_TABLE_START + ID_TABLE_LEN) {
 			return;
 		}
 		idE2Data = iter();
@@ -104,10 +147,14 @@ void NonVolatileData::findSensIdHashOrEmpty(uint32_t sensorIdHash) {
  */
 NonVolatileData::Theta_sens_typeE2 NonVolatileData::iter(void) {
 	Theta_sens_typeE2 idE2Data;
+	bool incResult = false;
 	AT24Cxxx::read(_currAddress, reinterpret_cast<uint8_t*>(&idE2Data),
 			sizeof(Theta_sens_typeE2));
 	if (!dataIsEmpty(idE2Data)) {
-		_currAddress += sizeof(Theta_sens_typeE2);
+		incResult = incCurrAddress();
+	}
+	if (incResult) {
+		idE2Data.sensorIdHash = 0xFFFFFFFF;
 	}
 	return idE2Data;
 }
@@ -188,6 +235,24 @@ bool NonVolatileData::dataIsEmpty(Theta_sens_typeE2 idE2Data) {
 	if (idE2Data.sensorIdHash == UINT32_MAX) {
 		return true;
 	}
+	return false;
+}
+
+bool NonVolatileData::incCurrAddress(void) {
+	if (_currAddress >= ID_TABLE_START + ID_TABLE_LEN) {
+		_currAddress = ID_TABLE_START + ID_TABLE_LEN;
+		return true;
+	}
+	_currAddress += sizeof(Theta_sens_typeE2);
+	return false;
+}
+bool NonVolatileData::decCurrAddress(void) {
+	if (_currAddress <= ID_TABLE_START) {
+		_currAddress = ID_TABLE_START;
+		return true;
+	}
+	_currAddress -= sizeof(Theta_sens_typeE2);
+
 	return false;
 }
 

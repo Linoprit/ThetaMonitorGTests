@@ -10,6 +10,7 @@
 #include <System/serialPrintf.h>
 #include <string>
 #include <Application/ThetaSensors/ID_Table.h>
+#include <Application/ThetaSensors/NonVolatileData.h>
 #include <System/OsHelpers.h>
 
 namespace cLine {
@@ -32,6 +33,11 @@ bool Interpreter::doit(CmdBufferType comLine) {
 	else if (cmd == 3913104177) { result = getSensIdTable(&lex); 	}
 	else if (cmd == 1925253141) { result = setStationId(&lex); 		}
 	else if (cmd == 2948963465) { result = getStationId(&lex); 		}
+	//
+	// TODO
+	//
+	//else if (cmd == ??) { result = eraseIdTable(&lex); 		}
+	// printIdTableRaw
 	else if (cmd == 1676458703) { OsHelpers::SYSTEM_REBOOT();		}
 //@formatter:on
 
@@ -44,18 +50,17 @@ bool Interpreter::setStationId(Lexer *lex) {
 	if (intToken->getType() != Token::Integer) {
 		return false;
 	}
-	ID_Table::setStationId(intToken->getVal());
-
+	NonVolDat::NonVolatileData::setStationId(intToken->getVal());
 	return true;
 }
 
 bool Interpreter::getSensIdTable(Lexer *lex) {
-	tx_printf("Printing sensor-table from E2:\n");
-	ID_Table::getSensIdTableE2();
+	tx_printf("Printing raw data of sensor-table from E2:\n");
+	NonVolDat::NonVolatileData::printIdTableRaw();
 	return true;
 }
 bool Interpreter::getStationId(Lexer *lex) {
-	uint32_t stationId = ID_Table::getStationId();
+	uint32_t stationId = NonVolDat::NonVolatileData::getStationId();
 	tx_printf("Station ID = %u\n", stationId);
 	return true;
 }
@@ -102,7 +107,7 @@ bool Interpreter::setSensId(Lexer *lex) {
 	memset(sens.shortname, ' ', ID_Table::SHORTNAME_LEN);
 	memcpy(sens.shortname, chrToken->getVal(), ID_Table::SHORTNAME_LEN);
 
-	ID_Table::setSensId(sens);
+	NonVolDat::NonVolatileData::writeIdTableData(sens);
 
 	return true;
 }
